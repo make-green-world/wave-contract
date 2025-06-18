@@ -25,7 +25,7 @@ abstract contract ReentrancyGuard {
 }
 
 
-contract WaveLottery is Ownable, ReentrancyGuard {
+contract WavePrizePool is Ownable, ReentrancyGuard {
     address public treasury;
     address public constant burnAddress = address(0xdead);
     uint256 baseDivider = 1000;
