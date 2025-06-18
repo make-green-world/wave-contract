@@ -54,7 +54,7 @@ contract WavePrizePool is Ownable, ReentrancyGuard {
     }
 
     PrizePool[] prizePools;
-    uint40 public lastPoolId;
+    uint40 lastPoolId;
 
     // Events
     event PoolCreated(uint256 poolId, address baseToken, uint256 limitAmount, uint256 ticketPrice);
@@ -209,6 +209,25 @@ contract WavePrizePool is Ownable, ReentrancyGuard {
                 }
             }
         }
+    }
+
+    function getActivePoolIds() public view returns (uint256[] memory) {
+        uint256 activeCount = 0;
+        for (uint40 i = 0; i < prizePools.length; i++) {
+            if (prizePools[i].isActive) {
+                activeCount++;
+            }
+        }
+
+        uint256[] memory activePoolIds = new uint256[](activeCount);
+        uint40 index = 0;
+        for (uint40 i = 0; i < prizePools.length; i++) {
+            if (prizePools[i].isActive) {
+                activePoolIds[index] = i;
+                index++;
+            }
+        }
+        return activePoolIds;
     }
 
     function setTreasury(address _treasury) public onlyOwner {
