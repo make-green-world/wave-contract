@@ -93,7 +93,7 @@ contract WavePrizePool is Ownable, ReentrancyGuard {
         emit PoolCreated(prizePool.poolId, _baseToken, _limitAmount, _ticketPrice);
     }
 
-    function enterPool(uint40 _poolId, uint256 _xpAmount) public {
+    function enterPool(uint40 _poolId, uint256 _xpAmount) public nonReentrant{
         PrizePool storage prizePool = prizePools[_poolId];
         require(_poolId < prizePools.length, "No pool");
         require(_xpAmount >= prizePool.ticketPrice, "Amount is smaller than TicketPrice");
