@@ -56,6 +56,7 @@ contract WaveFlip is Ownable, ReentrancyGuard {
     event GameCreated(uint256 poolId, address baseToken, uint256 minTokenAmount);
     event EnteredPool(uint256 poolId, address user, uint256 xpAmount);
     event PoolEnded(uint256 poolId);
+    event DrawnGame(uint256 result);
     event WinnerDrawn(uint256 poolId, address winner, uint256 rewardAmount);
     event TreasuryUpdated(address newTreasury);
     event RandomNumberConsumerUpdated(address newReferee);
@@ -89,16 +90,7 @@ contract WaveFlip is Ownable, ReentrancyGuard {
         require(_poolId < gamePools.length, "No pool");
         require(_xpAmount >= gamePool.minTokenAmount, "Amount is smaller than TicketPrice");
         require(gamePool.isActive, "Pool is not active");
-
-        gamePool.users.push(
-            User({
-                user: msg.sender,
-                xpAmount: _xpAmount,
-                betTime: block.timestamp,
-                rewardAmount: 0
-            })
-        );
-        gamePool.totalXpAmount += _xpAmount;
+        
 
         IERC20(gamePool.baseToken).transferFrom(msg.sender, address(this), _xpAmount);
 
@@ -107,7 +99,7 @@ contract WaveFlip is Ownable, ReentrancyGuard {
         drawGame(_poolId, _xpAmount);
     }
 
-    function drawGame(uint256 _poolId, uint256 _xpAmount) public {
+    function drawGame(uint256 _poolId, uint256 _xpAmount) internal {
         require(_poolId < gamePools.length, "No pool");
         
          // Request a random number from RandomNumberConsumer
@@ -117,7 +109,7 @@ contract WaveFlip is Ownable, ReentrancyGuard {
         uint256 result = randomNumberConsumer.randomResult();
         require(result > 0, "Random number not generated yet");
 
-        _safeDraw(_poolId, result % 2, _xpAmount);
+        _safeDraw(_poolId, result, _xpAmount);
     }
 
     function _safeDraw(uint256 _poolId, uint256 result, uint256 _xpAmount) internal {
@@ -129,10 +121,30 @@ contract WaveFlip is Ownable, ReentrancyGuard {
         IERC20(gamePool.baseToken).transfer(burnAddress, _burnAmount);
         IERC20(gamePool.baseToken).transfer(treasury, _treasuryAmount);
 
-        if (result == 0) { // User win!, got reward
+        if (result % 2 == 0) { // User win!, got reward
             IERC20(gamePool.baseToken).transfer(msg.sender, _winnerAmount);
+            gamePool.users.push(
+                User({
+                    user: msg.sender,
+                    xpAmount: _xpAmount,
+                    betTime: block.timestamp,
+                    rewardAmount: _winnerAmount
+                })
+            );
+            gamePool.totalXpAmount += _xpAmount;
+        } else {
+            gamePool.users.push(
+                User({
+                    user: msg.sender,
+                    xpAmount: _xpAmount,
+                    betTime: block.timestamp,
+                    rewardAmount: 0
+                })
+            );
+            gamePool.totalXpAmount += _xpAmount;
         }
 
+        emit DrawnGame(result);
         emit WinnerDrawn(_poolId, msg.sender, _winnerAmount);
     }
 
