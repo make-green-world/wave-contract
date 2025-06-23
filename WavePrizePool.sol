@@ -63,8 +63,8 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
     // For this example, retrieve 2 random values in one request.
     // Cannot exceed VRFCoordinatorV2_5.MAX_NUM_WORDS.
-    uint32 public numWords = 2;
-    uint public randomWordsNum;
+    uint32 public numWords = 1;
+    uint public lastDrawnNumber;
 
     address public treasury;
     address public constant burnAddress = address(0xdead);
@@ -75,6 +75,7 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         uint256 xpAmount;
         uint256 betTime;
         uint256 rewardAmount;
+        uint40 poolId;
     }
 
     struct PrizePool {
@@ -94,6 +95,8 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
     PrizePool[] prizePools;
     uint40 lastPoolId;
+    mapping(address => User[]) public userHistory;
+    mapping(uint256 => uint256) public requestIdToPoolId;
 
     // Events
     event PoolCreated(uint256 poolId, address baseToken, uint256 limitAmount, uint256 ticketPrice);
@@ -103,6 +106,7 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
     event TreasuryUpdated(address newTreasury);
     event RandomNumberConsumerUpdated(address newReferee);
     event PoolDataUpdated(uint256 poolId, uint8 burnFee, uint8 treasuryFee, uint256 limitAmount, uint256 ticketPrice);
+    event PoolDrawRequested(uint256 requestId, uint256 poolId);
 
     constructor(address _treasury, uint256 subscriptionId)  
         VRFConsumerBaseV2Plus(0xDA3b641D438362C440Ac5458c57e00a712b66700)
@@ -120,6 +124,7 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         uint256 _limitTime,
         uint256 _ticketPrice
     ) public onlyOwner {
+        require(_burnFee + _treasuryFee <= baseDivider, "Invalid fee configuration");
         prizePools.push();
         PrizePool storage prizePool = prizePools[prizePools.length - 1];
         prizePool.baseToken = _baseToken;
@@ -136,9 +141,9 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         emit PoolCreated(prizePool.poolId, _baseToken, _limitAmount, _ticketPrice);
     }
 
-    function enterPool(uint40 _poolId, uint256 _xpAmount) public {
-        PrizePool storage prizePool = prizePools[_poolId];
+    function enterPool(uint40 _poolId, uint256 _xpAmount) public nonReentrant {
         require(_poolId < prizePools.length, "No pool");
+        PrizePool storage prizePool = prizePools[_poolId];
         require(_xpAmount >= prizePool.ticketPrice, "Amount is smaller than TicketPrice");
         require(prizePool.isActive, "Pool is not active");
 
@@ -147,35 +152,47 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
                 user: msg.sender,
                 xpAmount: _xpAmount,
                 betTime: block.timestamp,
+                poolId: _poolId,
+                rewardAmount: 0
+            })
+        );
+
+        userHistory[msg.sender].push( 
+            User({
+                user: msg.sender,
+                xpAmount: _xpAmount,
+                betTime: block.timestamp,
+                poolId: _poolId,
                 rewardAmount: 0
             })
         );
         prizePool.totalXpAmount += _xpAmount;
 
-        IERC20(prizePool.baseToken).transferFrom(msg.sender, address(this), _xpAmount);
+        require(IERC20(prizePool.baseToken).transferFrom(msg.sender, address(this), _xpAmount), "EnterPool Token Transfer Failed");
 
         emit EnteredPool(_poolId, msg.sender, _xpAmount);
 
         if ((prizePool.totalXpAmount >= prizePool.limitAmount) || ((block.timestamp >= prizePool.startTime + prizePool.limitTime) && prizePool.limitTime != 0)) {
-            _safeDraw(_poolId);
+            uint256 requestId = requestRandomWords(true);
+            requestIdToPoolId[requestId] = _poolId;
         }
     }
 
     function _safeDraw(uint256 _poolId) internal {
-        requestRandomWords(false);
-
         PrizePool storage prizePool = prizePools[_poolId];
-        uint result = randomWordsNum % prizePool.users.length;
+        uint result = lastDrawnNumber % prizePool.users.length;
         prizePool.isActive = false;
         prizePool.winner = prizePool.users[result];
         uint256 _burnAmount = (prizePool.totalXpAmount * prizePool.burnFee) / baseDivider;
         uint256 _treasuryAmount = (prizePool.totalXpAmount * prizePool.treasuryFee) / baseDivider;
         uint256 _winnerAmount = prizePool.totalXpAmount - _burnAmount - _treasuryAmount;
+        
         prizePool.winner.rewardAmount = _winnerAmount;
+        prizePool.users[result].rewardAmount = _winnerAmount;
 
-        IERC20(prizePool.baseToken).transfer(prizePool.winner.user, _winnerAmount);
-        IERC20(prizePool.baseToken).transfer(burnAddress, _burnAmount);
-        IERC20(prizePool.baseToken).transfer(treasury, _treasuryAmount);
+        require(IERC20(prizePool.baseToken).transfer(prizePool.winner.user, _winnerAmount), "Winner Reward Transfer Failed");
+        require(IERC20(prizePool.baseToken).transfer(burnAddress, _burnAmount), "Burn Transfer Failed");
+        require(IERC20(prizePool.baseToken).transfer(treasury, _treasuryAmount), "Treasury Transfer Failed");
 
         emit WinnerDrawn(_poolId, prizePool.winner.user, _winnerAmount);
         emit PoolEnded(_poolId);
@@ -216,8 +233,11 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         require(s_requests[_requestId].exists, "request not found");
         s_requests[_requestId].fulfilled = true;
         s_requests[_requestId].randomWords = _randomWords;
-        randomWordsNum = _randomWords[0]; 
+        lastDrawnNumber = _randomWords[0]; 
         emit RequestFulfilled(_requestId, _randomWords);
+
+        uint256 _poolId = requestIdToPoolId[_requestId];
+        _safeDraw(_poolId);
     }
 
     function getRequestStatus(
@@ -258,35 +278,8 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         );
     }
     
-    function getUserHistory(address _user) public view returns (
-        uint256[] memory xpAmount,
-        uint256[] memory betTime,
-        uint256[] memory rewardAmount
-    ) {
-        uint256 ticketCount = 0;
-        for (uint40 i = 0; i < prizePools.length; i++) {
-            for (uint40 j = 0; j < prizePools[i].users.length; j++) {
-                if (prizePools[i].users[j].user == _user) {
-                    ticketCount++;
-                }
-            }
-        }
-
-        xpAmount = new uint256[](ticketCount);
-        betTime = new uint256[](ticketCount);
-        rewardAmount = new uint256[](ticketCount);
-
-        uint40 index = 0;
-        for (uint40 i = 0; i < prizePools.length; i++) {
-            for (uint40 j = 0; j < prizePools[i].users.length; j++) {
-                if (prizePools[i].users[j].user == _user) {
-                    xpAmount[index] = prizePools[i].users[j].xpAmount;
-                    betTime[index] = prizePools[i].users[j].betTime;
-                    rewardAmount[index] = prizePools[i].users[j].rewardAmount;
-                    index++;
-                }
-            }
-        }
+    function getUserHistory(address _user) public view returns (User[] memory history) {
+        history = userHistory[_user];
     }
 
     function setTreasury(address _treasury) public onlyOwner {
@@ -305,6 +298,8 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         uint256 _ticketPrice
     ) public onlyOwner {
         require(_poolId < prizePools.length, "No pool");
+        require(_burnFee + _treasuryFee <= baseDivider, "Invalid fee configuration");
+
         PrizePool storage prizePool = prizePools[_poolId];
         prizePool.burnFee = _burnFee;
         prizePool.treasuryFee = _treasuryFee;
