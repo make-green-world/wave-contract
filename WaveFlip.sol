@@ -142,11 +142,9 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
         require(_poolId < gamePools.length, "No pool");
         GamePool storage gamePool = gamePools[_poolId];
         require(_xpAmount >= gamePool.minTokenAmount, "Amount is smaller than TicketPrice");
-        require(gamePool.isActive, "Pool is not active");
-        
+        require(gamePool.isActive, "Pool is not active");        
 
         require(IERC20(gamePool.baseToken).transferFrom(msg.sender, address(this), _xpAmount), "Enter Game Token Transfer Failed");
-
         emit EnteredPool(_poolId, msg.sender, _xpAmount);
 
         uint256 requestId = requestRandomWords(false);
@@ -288,35 +286,8 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
         );
     }
     
-    function getUserHistory(address _user) public view returns (
-        uint256[] memory xpAmount,
-        uint256[] memory betTime,
-        uint256[] memory rewardAmount
-    ) {
-        uint256 ticketCount = 0;
-        for (uint40 i = 0; i < gamePools.length; i++) {
-            for (uint40 j = 0; j < gamePools[i].users.length; j++) {
-                if (gamePools[i].users[j].user == _user) {
-                    ticketCount++;
-                }
-            }
-        }
-
-        xpAmount = new uint256[](ticketCount);
-        betTime = new uint256[](ticketCount);
-        rewardAmount = new uint256[](ticketCount);
-
-        uint40 index = 0;
-        for (uint40 i = 0; i < gamePools.length; i++) {
-            for (uint40 j = 0; j < gamePools[i].users.length; j++) {
-                if (gamePools[i].users[j].user == _user) {
-                    xpAmount[index] = gamePools[i].users[j].xpAmount;
-                    betTime[index] = gamePools[i].users[j].betTime;
-                    rewardAmount[index] = gamePools[i].users[j].rewardAmount;
-                    index++;
-                }
-            }
-        }
+    function getUserHistory(address _user) public view returns (User[] memory history) {
+        history = userHistory[_user];
     }
 
     function getActivePoolIds() public view returns (uint256[] memory) {
@@ -360,5 +331,4 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
         emit PoolDataUpdated(_poolId, _burnFee, _treasuryFee, _minTokenAmount);
     }
-
 }
