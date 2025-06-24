@@ -25,7 +25,7 @@ abstract contract ReentrancyGuard {
 }
 
 abstract contract RandomNumberConsumer {
-    function getRandomNumber(uint256 _poolId, uint256 _xpAmount) external virtual;
+    function getRandomNumber(uint256 _gameId, uint256 _xpAmount) external virtual;
 }
 
 contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
@@ -75,7 +75,7 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
     mapping(uint256 => GameData) public pendingGames;
     struct GameData {
-        uint256 poolId;
+        uint256 gameId;
         uint256 xpAmount;
         address player;
     }
@@ -89,7 +89,7 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
     struct GamePool {
         address baseToken;
-        uint40 poolId;
+        uint40 gameId;
         uint8 burnFee;
         uint8 treasuryFee;
         uint256 totalXpAmount;
@@ -100,18 +100,18 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
     GamePool[] gamePools;
     mapping(address => User[]) public userHistory;
-    uint40 lastPoolId;
+    uint40 lastGameId;
 
     // Events
-    event GameCreated(uint256 poolId, address baseToken, uint256 minTokenAmount);
-    event EnteredPool(uint256 poolId, address user, uint256 xpAmount);
-    event PoolEnded(uint256 poolId);
+    event GameCreated(uint256 gameId, address baseToken, uint256 minTokenAmount);
+    event EnteredPool(uint256 gameId, address user, uint256 xpAmount);
+    event PoolEnded(uint256 gameId);
     event DrawnGame(uint256 result);
-    event WinnerDrawn(uint256 poolId, address winner, uint256 rewardAmount);
+    event WinnerDrawn(uint256 gameId, address winner, uint256 rewardAmount);
     event TreasuryUpdated(address newTreasury);
     event RandomNumberConsumerUpdated(address newReferee);
-    event PoolDataUpdated(uint256 poolId, uint8 burnFee, uint8 treasuryFee, uint256 limitAmount);
-    event PoolDrawRequested(uint256 requestId, uint256 poolId);
+    event PoolDataUpdated(uint256 gameId, uint8 burnFee, uint8 treasuryFee, uint256 limitAmount);
+    event PoolDrawRequested(uint256 requestId, uint256 gameId);
 
     constructor(address _treasury, uint256 subscriptionId) VRFConsumerBaseV2Plus(0xDA3b641D438362C440Ac5458c57e00a712b66700) {
         treasury = _treasury;
@@ -128,37 +128,36 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
         gamePools.push();
         GamePool storage gamePool = gamePools[gamePools.length - 1];
         gamePool.baseToken = _baseToken;
-        gamePool.poolId = lastPoolId;
+        gamePool.gameId = lastGameId;
         gamePool.burnFee = _burnFee;
         gamePool.treasuryFee = _treasuryFee;
         gamePool.minTokenAmount = _minTokenAmount;
         gamePool.isActive = true;
-        lastPoolId++;
+        lastGameId++;
 
-        emit GameCreated(gamePool.poolId, _baseToken, _minTokenAmount);
+        emit GameCreated(gamePool.gameId, _baseToken, _minTokenAmount);
     }
 
-    function enterGame(uint40 _poolId, uint256 _xpAmount) public nonReentrant {
-        require(_poolId < gamePools.length, "No pool");
-        GamePool storage gamePool = gamePools[_poolId];
+    function enterGame(uint40 _gameId, uint256 _xpAmount) public nonReentrant {
+        require(_gameId < gamePools.length, "No pool");
+        GamePool storage gamePool = gamePools[_gameId];
         require(_xpAmount >= gamePool.minTokenAmount, "Amount is smaller than TicketPrice");
         require(gamePool.isActive, "Pool is not active");        
 
         require(IERC20(gamePool.baseToken).transferFrom(msg.sender, address(this), _xpAmount), "Enter Game Token Transfer Failed");
-        emit EnteredPool(_poolId, msg.sender, _xpAmount);
+        emit EnteredPool(_gameId, msg.sender, _xpAmount);
 
         uint256 requestId = requestRandomWords(false);
-        pendingGames[requestId] = GameData(_poolId, _xpAmount, msg.sender);
+        pendingGames[requestId] = GameData(_gameId, _xpAmount, msg.sender);
 
-        emit PoolDrawRequested(requestId, _poolId);
+        emit PoolDrawRequested(requestId, _gameId);
     }
 
 
-    function _safeDraw(uint256 _poolId, uint256 _xpAmount) internal {
-        requestRandomWords(false);
+    function _safeDraw(uint256 _gameId, uint256 _xpAmount) internal {
         uint result = latestRandomWord;
 
-        GamePool storage gamePool = gamePools[_poolId];
+        GamePool storage gamePool = gamePools[_gameId];
         uint256 _burnAmount = (_xpAmount * gamePool.burnFee) / baseDivider;
         uint256 _treasuryAmount = (_xpAmount * gamePool.treasuryFee) / baseDivider;
         uint256 _winnerAmount = _xpAmount * 2 - _burnAmount - _treasuryAmount;
@@ -206,7 +205,7 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
         }
 
         emit DrawnGame(result);
-        emit WinnerDrawn(_poolId, msg.sender, _winnerAmount);
+        emit WinnerDrawn(_gameId, msg.sender, _winnerAmount);
     }
 
     function requestRandomWords( bool enableNativePayment) internal returns (uint256 requestId) {
@@ -247,7 +246,7 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
         emit RequestFulfilled(_requestId, _randomWords);
 
         GameData memory game = pendingGames[_requestId];
-        _safeDraw(game.poolId, game.xpAmount);
+        _safeDraw(game.gameId, game.xpAmount);
         delete pendingGames[_requestId];
     }
 
@@ -264,7 +263,7 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
 
     }
  
-    function getGameInfo(uint256 _poolId) public view returns (
+    function getGameInfo(uint256 _gameId) public view returns (
         address baseToken,
         uint8 burnFee,
         uint8 treasuryFee,
@@ -274,7 +273,7 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
         bool isActive
     ) 
     {
-        GamePool storage gamePool = gamePools[_poolId];
+        GamePool storage gamePool = gamePools[_gameId];
         return (
             gamePool.baseToken, 
             gamePool.burnFee, 
@@ -317,18 +316,18 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
     }
 
     function setGameData(
-        uint256 _poolId,
+        uint256 _gameId,
         uint8 _burnFee,
         uint8 _treasuryFee,
         uint256 _minTokenAmount
     ) public onlyOwner {
-        require(_poolId < gamePools.length, "No pool");
+        require(_gameId < gamePools.length, "No pool");
         require(_burnFee + _treasuryFee <= baseDivider, "Invalid fee configuration");
-        GamePool storage prizePool = gamePools[_poolId];
+        GamePool storage prizePool = gamePools[_gameId];
         prizePool.burnFee = _burnFee;
         prizePool.treasuryFee = _treasuryFee;
         prizePool.minTokenAmount = _minTokenAmount;
 
-        emit PoolDataUpdated(_poolId, _burnFee, _treasuryFee, _minTokenAmount);
+        emit PoolDataUpdated(_gameId, _burnFee, _treasuryFee, _minTokenAmount);
     }
 }

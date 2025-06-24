@@ -182,14 +182,14 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         PrizePool storage prizePool = prizePools[_poolId];
         uint result = lastDrawnNumber % prizePool.users.length;
         prizePool.isActive = false;
-        prizePool.winner = prizePool.users[result];
+
         uint256 _burnAmount = (prizePool.totalXpAmount * prizePool.burnFee) / baseDivider;
         uint256 _treasuryAmount = (prizePool.totalXpAmount * prizePool.treasuryFee) / baseDivider;
         uint256 _winnerAmount = prizePool.totalXpAmount - _burnAmount - _treasuryAmount;
         
-        prizePool.winner.rewardAmount = _winnerAmount;
         prizePool.users[result].rewardAmount = _winnerAmount;
-
+        prizePool.winner = prizePool.users[result];
+        
         require(IERC20(prizePool.baseToken).transfer(prizePool.winner.user, _winnerAmount), "Winner Reward Transfer Failed");
         require(IERC20(prizePool.baseToken).transfer(burnAddress, _burnAmount), "Burn Transfer Failed");
         require(IERC20(prizePool.baseToken).transfer(treasury, _treasuryAmount), "Treasury Transfer Failed");
