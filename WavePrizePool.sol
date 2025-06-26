@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 // REENTRANCY GUARD
 abstract contract ReentrancyGuard {
@@ -25,7 +26,7 @@ abstract contract ReentrancyGuard {
 }
 
 
-contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
+contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
     event RequestSent(uint256 requestId, uint32 numWords);
     event RequestFulfilled(uint256 requestId, uint256[] randomWords);
 
@@ -56,7 +57,7 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
     // this limit based on the network that you select, the size of the request,
     // and the processing of the callback request in the fulfillRandomWords()
     // function.
-    uint32 public callbackGasLimit = 100000;
+    uint32 public callbackGasLimit = 70000;
 
     // The default is 3, but you can set this higher.
     uint16 public requestConfirmations = 3;
@@ -141,7 +142,7 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         emit PoolCreated(prizePool.poolId, _baseToken, _limitAmount, _ticketPrice);
     }
 
-    function enterPool(uint40 _poolId, uint256 _xpAmount) public nonReentrant {
+    function enterPool(uint40 _poolId, uint256 _xpAmount) public whenNotPaused {
         require(_poolId < prizePools.length, "No pool");
         PrizePool storage prizePool = prizePools[_poolId];
         require(_xpAmount >= prizePool.ticketPrice, "Amount is smaller than TicketPrice");
@@ -175,6 +176,8 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         if ((prizePool.totalXpAmount >= prizePool.limitAmount) || ((block.timestamp >= prizePool.startTime + prizePool.limitTime) && prizePool.limitTime != 0)) {
             uint256 requestId = requestRandomWords(true);
             requestIdToPoolId[requestId] = _poolId;
+
+            emit PoolDrawRequested(requestId, _poolId);
         }
     }
 
@@ -186,10 +189,10 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus {
         uint256 _burnAmount = (prizePool.totalXpAmount * prizePool.burnFee) / baseDivider;
         uint256 _treasuryAmount = (prizePool.totalXpAmount * prizePool.treasuryFee) / baseDivider;
         uint256 _winnerAmount = prizePool.totalXpAmount - _burnAmount - _treasuryAmount;
-        
+
         prizePool.users[result].rewardAmount = _winnerAmount;
         prizePool.winner = prizePool.users[result];
-        
+
         require(IERC20(prizePool.baseToken).transfer(prizePool.winner.user, _winnerAmount), "Winner Reward Transfer Failed");
         require(IERC20(prizePool.baseToken).transfer(burnAddress, _burnAmount), "Burn Transfer Failed");
         require(IERC20(prizePool.baseToken).transfer(treasury, _treasuryAmount), "Treasury Transfer Failed");

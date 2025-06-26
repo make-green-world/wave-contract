@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 // REENTRANCY GUARD
 abstract contract ReentrancyGuard {
@@ -28,7 +29,7 @@ abstract contract RandomNumberConsumer {
     function getRandomNumber(uint256 _gameId, uint256 _xpAmount) external virtual;
 }
 
-contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
+contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
     event RequestSent(uint256 requestId, uint32 numWords);
     event RequestFulfilled(uint256 requestId, uint256[] randomWords);
 
@@ -138,7 +139,7 @@ contract WaveFlip is ReentrancyGuard, VRFConsumerBaseV2Plus {
         emit GameCreated(gamePool.gameId, _baseToken, _minTokenAmount);
     }
 
-    function enterGame(uint40 _gameId, uint256 _xpAmount) public nonReentrant {
+    function enterGame(uint40 _gameId, uint256 _xpAmount) public nonReentrant whenNotPaused {
         require(_gameId < gamePools.length, "No pool");
         GamePool storage gamePool = gamePools[_gameId];
         require(_xpAmount >= gamePool.minTokenAmount, "Amount is smaller than TicketPrice");
