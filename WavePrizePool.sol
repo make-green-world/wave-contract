@@ -285,6 +285,10 @@ contract WavePrizePool is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
         history = userHistory[_user];
     }
 
+    function setCallbackGasLimit(uint32 _limit) public onlyOwner {
+        callbackGasLimit = _limit;
+    }
+    
     function setTreasury(address _treasury) public onlyOwner {
         require(_treasury != address(0xdead)); // not dead contract
         treasury = _treasury;
