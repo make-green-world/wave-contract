@@ -112,9 +112,9 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
     mapping(address => User[]) public userHistory;
     mapping(uint256 => Challenge) public pendingChallenges;
 
-    uint40 lastGameId;
-    uint40 lastChallengeId;
-    uint40[] activeChallengeIds;
+    uint40 public lastGameId;
+    uint40 public lastChallengeId;
+    uint40[] public activeChallengeIds;
 
     // Events
     event GameCreated(uint256 gameId, address baseToken, uint256 minTokenAmount);
@@ -246,7 +246,7 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
 
             require(IERC20(gamePool.baseToken).transfer(challenge.challenger.userAddress, _winnerAmount), "Challenger Win! Reward Transfer Failed");
 
-            userHistory[msg.sender].push(challenge.challenger);
+            userHistory[challenge.challenger.userAddress].push(challenge.challenger);
             gamePool.totalXpAmount += _xpAmount;
         }
 
@@ -330,6 +330,29 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
             gamePool.challenges, 
             gamePool.minTokenAmount, 
             gamePool.isActive
+        );
+    }
+
+    function getChallengeInfo(uint256 _challengeId) public view returns (
+        uint40 gameId,
+        User memory creator,
+        User memory challenger,
+        bool isActive,
+        bool result, // true = creator wins, false = challenger wins
+        uint256 createTime,
+        uint256 drawTime,
+        uint256 xpAmount
+    ) {
+        Challenge storage challenge = challenges[_challengeId];
+        return (
+            challenge.gameId,
+            challenge.creator,
+            challenge.challenger,
+            challenge.isActive,
+            challenge.result,
+            challenge.createTime,
+            challenge.drawTime,
+            challenge.xpAmount
         );
     }
     
