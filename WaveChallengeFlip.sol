@@ -232,6 +232,7 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
         if (result % 2 == 0) { // Creator win!, got reward
             
             challenge.creator.rewardAmount = _winnerAmount;
+            challenge.result = true;
 
             require(IERC20(gamePool.baseToken).transfer(challenge.creator.userAddress, _winnerAmount), "Creator Win! Reward Transfer Failed");
 
@@ -243,6 +244,7 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
         } else { // Challenger win!, got reward
 
             challenge.challenger.rewardAmount = _winnerAmount;
+            challenge.result = false;
 
             require(IERC20(gamePool.baseToken).transfer(challenge.challenger.userAddress, _winnerAmount), "Challenger Win! Reward Transfer Failed");
 
@@ -250,7 +252,6 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
             gamePool.totalXpAmount += _xpAmount;
         }
 
-        challenge.result = true;
         challenge.isActive = false;
         challenge.drawTime = block.timestamp;
         gamePool.challenges.push(challenge);        
