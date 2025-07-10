@@ -110,7 +110,7 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
     Challenge[] challenges;
 
     mapping(address => User[]) public userHistory;
-    mapping(uint256 => Challenge) public pendingChallenges;
+    mapping(uint256 => uint40 challengeId) public pendingChallenges;
 
     uint40 public lastGameId;
     uint40 public lastChallengeId;
@@ -211,7 +211,7 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
         emit EnteredChallenge(_challengeId, msg.sender, _xpAmount);
 
         uint256 requestId = requestRandomWords(false);
-        pendingChallenges[requestId] = challenge;
+        pendingChallenges[requestId] = _challengeId;
 
         emit ChallengeDrawRequested(requestId, _challengeId);
     }
@@ -294,7 +294,8 @@ contract WaveChallengeFlip is ReentrancyGuard, VRFConsumerBaseV2Plus, Pausable {
         latestRandomWord = _randomWords[0]; 
         emit RequestFulfilled(_requestId, _randomWords);
 
-        Challenge memory challenge = pendingChallenges[_requestId];
+        uint40 challengeId = pendingChallenges[_requestId];
+        Challenge storage challenge = challenges[challengeId];
         _safeDraw(challenge.gameId, challenge.challengeId, challenge.xpAmount);
         delete pendingChallenges[_requestId];
     }
